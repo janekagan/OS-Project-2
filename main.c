@@ -18,7 +18,8 @@ how to use the page table and disk interfaces.
 void page_fault_handler( struct page_table *pt, int page )
 {
 	printf("page fault on page #%d\n",page);
-	exit(1);
+	page_table_set_entry(pt,page,page,PROT_READ|PROT_WRITE);
+	return;
 }
 
 int main( int argc, char *argv[] )
@@ -30,6 +31,7 @@ int main( int argc, char *argv[] )
 
 	int npages = atoi(argv[1]);
 	int nframes = atoi(argv[2]);
+	const char *algorithm = argv[3];
 	const char *program = argv[4];
 
 	struct disk *disk = disk_open("myvirtualdisk",npages);
@@ -49,6 +51,10 @@ int main( int argc, char *argv[] )
 
 	char *physmem = page_table_get_physmem(pt);
 
+	if((strcmp(algorithm,"rand") != 0) && (strcmp(algorithm, "fifo") != 0) && (strcmp(algorithm, "custom")) != 0) {
+		fprintf(stderr, "unknown algorithm: %s\n", argv[3]);
+	}
+
 	if(!strcmp(program,"sort")) {
 		sort_program(virtmem,npages*PAGE_SIZE);
 
@@ -59,7 +65,7 @@ int main( int argc, char *argv[] )
 		focus_program(virtmem,npages*PAGE_SIZE);
 
 	} else {
-		fprintf(stderr,"unknown program: %s\n",argv[3]);
+		fprintf(stderr,"unknown program: %s\n",argv[4]);
 
 	}
 
