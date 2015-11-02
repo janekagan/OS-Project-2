@@ -19,7 +19,7 @@ how to use the page table and disk interfaces.
 char *algorithm;
 int used_frames = 0;
 int last_frame_written = 0;
-int oldest_frame = 0;
+int oldest_page;
 struct disk *disk;
 
 void page_fault_handler( struct page_table *pt, int page )
@@ -29,26 +29,26 @@ void page_fault_handler( struct page_table *pt, int page )
     int bits_ptr;
     int frame_ptr;
     char *physmem = page_table_get_physmem(pt);
+    int remove_page = 0;
 	
     printf("page fault on page #%d\n",page);
     page_table_get_entry(pt, page, &frame_ptr, &bits_ptr);
 
-    if (strcmp(algorithm, "rand") == 0) {
-
-        // Seed random number generator
-        time_t t;
-        srand((unsigned) time(&t));
+    // Seed random number generator
+    time_t t;
+    srand((unsigned) time(&t));
         
-        // Page not in memory
-        if (bits_ptr == NULL) {
+    // Page not in memory
+    if (bits_ptr == NULL) {
             
-            fprintf(stderr, "Page not in memory.\n");
+        fprintf(stderr, "Page not in memory.\n");
             
-            // Check if frames full   
-	    if (used_frames == frames) {
+        // Check if frames full   
+        if (used_frames == frames) {
                 
-                // If full, kick out random page
-                int remove_page = (pages-1) * (double)rand() / (double)RAND_MAX + 0.5;
+            // If full, kick out random page
+            if (strcmp(algorithm, "rand") == 0) {
+                remove_page = (pages-1) * (double)rand() / (double)RAND_MAX + 0.5;
                 page_table_get_entry(pt, remove_page, &frame_ptr, &bits_ptr);
                 
                 while (bits_ptr == NULL) {
@@ -57,52 +57,54 @@ void page_fault_handler( struct page_table *pt, int page )
                     remove_page = (pages-1) * (double) rand() / (double)RAND_MAX + 0.5;
                     page_table_get_entry(pt, remove_page, &frame_ptr, &bits_ptr);
                 }
-           
-                fprintf(stderr, "Kicked out page %d\n", remove_page);
-
-                // Check if frame written
-                if (bits_ptr&PROT_WRITE) {
-                    fprintf(stderr, "Dirty page, writing back.\n");
-                    disk_write(disk, remove_page, &physmem[frame_ptr * BLOCK_SIZE]);
-                }   
-                
-                // Read new page into memory
-                fprintf(stderr, "Reading page %d into memory.\n", page);
-                disk_read(disk, page, &physmem[frame_ptr * BLOCK_SIZE]);
-                
-                // Set new page entry, remove old one
-                fprintf(stderr, "Setting page table entry.\n");
-                page_table_set_entry(pt, page, frame_ptr, PROT_READ);
-                page_table_set_entry(pt, remove_page, frame_ptr, 0);
-                          
             }
-             
-            // Frames available
-            else { 
+            else if (strcmp(algorithm, "fifo") == 0) {
+            }
+            fprintf(stderr, "Kicked out page %d\n", remove_page);
+
+            // Check if frame written
+            if (bits_ptr&PROT_WRITE) {
+                fprintf(stderr, "Dirty page, writing back.\n");
+                disk_write(disk, remove_page, &physmem[frame_ptr * BLOCK_SIZE]);
+            }   
                 
-                fprintf(stderr, "Frames available!\n");
-                last_frame_written++;
+            // Read new page into memory
+            fprintf(stderr, "Reading page %d into memory.\n", page);
+            disk_read(disk, page, &physmem[frame_ptr * BLOCK_SIZE]);
                 
-                if (last_frame_written == frames) {
-                    last_frame_written = 0;
-                }
+            // Set new page entry, remove old one
+            fprintf(stderr, "Setting page table entry.\n");
+            page_table_set_entry(pt, page, frame_ptr, PROT_READ);
+            page_table_set_entry(pt, remove_page, frame_ptr, 0);
+                          
+        }   
                 
-                fprintf(stderr, "Reading page into memory and setting page table entry.\n");
-                disk_read(disk, page, &physmem[last_frame_written * BLOCK_SIZE]);
-                page_table_set_entry(pt, page, last_frame_written, PROT_READ);
-                used_frames++;
-            }            
-        }
-        // Page in memory, so fault is due to write permissions not set
-        else if (!(bits_ptr&PROT_WRITE)) {
-            fprintf(stderr, "Setting write permissions for page %d\n", page);
-            page_table_set_entry(pt, page, frame_ptr, PROT_READ|PROT_WRITE);
-        }
-        else { // Who knooooows
-            fprintf(stderr, "Whoops! We don't know why this faulted.\n");
-        }
-            
+        // Else frames available
+        else { 
+                
+            fprintf(stderr, "Frames available!\n");
+            last_frame_written++;
+                
+            if (last_frame_written == frames) {
+                last_frame_written = 0;
+            }
+                
+            fprintf(stderr, "Reading page into memory and setting page table entry.\n");
+            disk_read(disk, page, &physmem[last_frame_written * BLOCK_SIZE]);
+            page_table_set_entry(pt, page, last_frame_written, PROT_READ);
+            used_frames++;
+        } 
+    }           
+        
+    // Page in memory, so fault is due to write permissions not set
+    else if (!(bits_ptr&PROT_WRITE)) {
+        fprintf(stderr, "Setting write permissions for page %d\n", page);
+        page_table_set_entry(pt, page, frame_ptr, PROT_READ|PROT_WRITE);
     }
+    else { // Who knooooows
+        fprintf(stderr, "Whoops! We don't know why this faulted.\n");
+    }
+          
     page_table_print(pt);
     return;
 }
